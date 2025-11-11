@@ -133,6 +133,16 @@ class AdaRRT():
         :returns: A Node object for the closest neighbor.
         """
         # FILL in your code here
+        min_distance = np.linalg.norm(sample - self.start.state)
+        nearest_node = self.start
+        
+        for node in self.start:
+            distance = np.linalg.norm(sample - node.state)
+            if distance < min_distance:
+                min_distance = distance
+                nearest_node = node
+        
+        return nearest_node
 
     def _extend_sample(self, sample, neighbor):
         """
