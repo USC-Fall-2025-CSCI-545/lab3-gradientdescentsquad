@@ -123,6 +123,8 @@ class AdaRRT():
             space.
         """
         # FILL in your code here
+	return np.random.uniform(self.joint_lower_limits, self.joint_upper_limits)
+
 
     def _get_nearest_neighbor(self, sample):
         """
