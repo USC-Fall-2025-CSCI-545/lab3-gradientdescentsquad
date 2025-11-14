@@ -123,7 +123,7 @@ class AdaRRT():
             space.
         """
         # FILL in your code here
-	return np.random.uniform(self.joint_lower_limits, self.joint_upper_limits)
+        return np.random.uniform(self.joint_lower_limits, self.joint_upper_limits)
 
 
     def _get_nearest_neighbor(self, sample):
@@ -158,7 +158,25 @@ class AdaRRT():
         :returns: The new Node object. On failure (collision), returns None.
         """
         # FILL in your code here
+        # Calculate direction from neighbor to sample
+        direction = sample - neighbor.state
 
+        # alculate distance
+        distance = np.linalg.norm(direction)
+
+        #Calculate new configuration
+        if distance <= self.step_size:
+            new_config = sample  # Sample is close enough, go all the way
+        else:
+          # Normalize direction and scale by step_size
+            new_config = neighbor.state + (direction / distance) * self.step_size
+
+        #Check for collision
+        if self._check_for_collision(new_config):
+            return None  # Collision detected, cannot extend
+
+        #Create and return new child node
+        return neighbor.add_child(new_config)
     def _check_for_completion(self, node):
         """
         Check whether node is within self.goal_precision distance of the goal.
@@ -167,7 +185,7 @@ class AdaRRT():
         :returns: Boolean indicating node is close enough for completion.
         """
         # FILL in your code here
-
+        
     def _trace_path_from_start(self, node=None):
         """
         Traces a path from start to node, if provided, or the goal otherwise.
