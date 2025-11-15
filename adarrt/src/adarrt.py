@@ -60,6 +60,7 @@ class AdaRRT():
                  joint_upper_limits=None,
                  ada_collision_constraint=None,
                  step_size=0.25,
+                 sample_near_goal_prob=0.0,
                  goal_precision=1.0,
                  max_iter=10000):
         """
@@ -72,8 +73,10 @@ class AdaRRT():
         :param step_size: Distance between nodes in the RRT.
         :param goal_precision: Maximum distance between RRT and goal before
             declaring completion.
-        :param sample_near_goal_prob:
-        :param sample_near_goal_range:
+        :param sample_near_goal_prob: The probaility of calling 
+            _get_random_sample_near_goal instead of _get_random_sample.
+        :param sample_near_goal_range: The distance along each axis of the 
+            search space that _get_random_sample_near_goal samples from.
         :param max_iter: Maximum number of iterations to run the RRT before
             failure.
         """
@@ -84,8 +87,12 @@ class AdaRRT():
         self.joint_upper_limits = joint_upper_limits or AdaRRT.joint_upper_limits
         self.ada_collision_constraint = ada_collision_constraint
         self.step_size = step_size
+        self.sample_near_goal_prob = sample_near_goal_prob
+        self.sample_near_goal_range = 0.05
         self.goal_precision = goal_precision
         self.max_iter = max_iter
+        self.samples_default = 0
+        self.samples_near = 0
 
     def build(self):
         """
@@ -106,6 +113,12 @@ class AdaRRT():
         """
         for k in range(self.max_iter):
             # FILL in your code here
+            if np.random.uniform() < self.sample_near_goal_prob:
+                sample_func = self._get_random_sample_near_goal
+                self.samples_near += 1
+            else:
+                sample_func = self._get_random_sample
+                self.samples_default += 1
 
             if new_node and self._check_for_completion(new_node):
                 # FILL in your code here
@@ -124,7 +137,19 @@ class AdaRRT():
         """
         # FILL in your code here
         return np.random.uniform(self.joint_lower_limits, self.joint_upper_limits)
+    
+    def _get_random_sample_near_goal(self):
+        """
+        Generates a sample around the goal within a distance of 0.05 along each
+        axis of the search space.
 
+        :returns: A vector representing a randomly sampled point near the goal.
+        """
+        # FILL in your code here
+        goal_state = self.goal.state
+        offset = np.random.uniform(-self.sample_near_goal_range, self.sample_near_goal_range, size=goal_state.shape)
+        q = goal_state + offset
+        return np.clip(q, self.joint_lower_limits, self.joint_upper_limits)
 
     def _get_nearest_neighbor(self, sample):
         """
@@ -177,6 +202,7 @@ class AdaRRT():
 
         #Create and return new child node
         return neighbor.add_child(new_config)
+    
     def _check_for_completion(self, node):
         """
         Check whether node is within self.goal_precision distance of the goal.
@@ -185,6 +211,11 @@ class AdaRRT():
         :returns: Boolean indicating node is close enough for completion.
         """
         # FILL in your code here
+        return np.allclose(
+            a=node.state,
+            b=self.goal.state,
+            atol=self.goal_precision,
+        )
         
     def _trace_path_from_start(self, node=None):
         """
@@ -210,7 +241,7 @@ class AdaRRT():
             self.ada.get_arm_skeleton(), sample)
 
 
-def main(is_sim):
+def main(is_sim, smoothing, precise_sampling):
     
     if not is_sim:
         from moveit_ros_planning_interface._moveit_roscpp_initializer import roscpp_init
@@ -252,6 +283,12 @@ def main(is_sim):
             ada.get_arm_state_space(),
             ada.get_arm_skeleton(),
             collision_free_constraint)
+    
+    if precise_sampling > 0.0:
+        print "[INFO] Precise sampling is ON with prob", precise_sampling
+        eps = 0.2
+    else:
+        print("[INFO] Precise sampling is OFF")
 
     # easy goal
     adaRRT = AdaRRT(
@@ -260,7 +297,8 @@ def main(is_sim):
         ada=ada,
         ada_collision_constraint=full_collision_constraint,
         step_size=delta,
-        goal_precision=eps)
+        goal_precision=eps,
+        sample_near_goal_prob=precise_sampling)
 
     rospy.sleep(1.0)
 
@@ -268,6 +306,8 @@ def main(is_sim):
         ada.start_trajectory_executor()
 
     path = adaRRT.build()
+    print "[INFO] # default samples =", adaRRT.samples_default, "# near samples =", adaRRT.samples_near
+    print "[INFO] goal_precision =", adaRRT.goal_precision
     if path is not None:
         print("Path waypoints:")
         print(np.asarray(path))
@@ -276,8 +316,14 @@ def main(is_sim):
             waypoints.append((0.0 + i, waypoint))
 
         t0 = time.clock()
-        traj = ada.compute_joint_space_path(
-            ada.get_arm_state_space(), waypoints)
+
+        if smoothing:
+            print("[INFO] Smoothing is ON.")
+            smoother = ada.compute_smooth_joint_space_path
+        else:
+            print("[INFO] Smoothing is OFF.")
+            smoother = ada.compute_joint_space_path
+        traj = smoother(ada.get_arm_state_space(), waypoints)
         t = time.clock() - t0
         print(str(t) + "seconds elapsed")
         raw_input('Press ENTER to execute trajectory and exit')
@@ -288,6 +334,8 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--sim', dest='is_sim', action='store_true')
     parser.add_argument('--real', dest='is_sim', action='store_false')
+    parser.add_argument('--smooth', dest='smoothing', action='store_true')
+    parser.add_argument('--precise', type=float, default=0.0, dest='precise_sampling')
     parser.set_defaults(is_sim=True)
     args = parser.parse_args()
-    main(args.is_sim)
+    main(args.is_sim, args.smoothing, args.precise_sampling)
