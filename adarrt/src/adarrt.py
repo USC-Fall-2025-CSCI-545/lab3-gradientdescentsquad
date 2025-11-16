@@ -120,13 +120,39 @@ class AdaRRT():
                 sample_func = self._get_random_sample
                 self.samples_default += 1
 
+            node = sample_func()
+            node_near = self._get_nearest_neighbor(node)
+            new_node = self._extend_sample(node, node_near)
+            
             if new_node and self._check_for_completion(new_node):
                 # FILL in your code here
+                q0 = new_node.state
+                q1 = self.goal.state
+                diff = q1 - q0
+                dist = np.linalg.norm(diff)
 
-                return path
+                # if dist == 0:
+                if dist < 1e-9:
+                    child = new_node.add_child(q1)
+                    return self._trace_path_from_start(child)
+
+                steps = int(np.ceil(dist / float(self.step_size)))
+                direct = diff / dist
+                for i in range(steps):
+                    if i != (steps - 1):
+                        q_cur = q0 + direct * (i + 1) * self.step_size
+                    else:
+                        q_cur = q1
+                    # careful! if in-collision
+                    if self._check_for_collision(q_cur):
+                        return self._trace_path_from_start(new_node)
+
+                child = new_node.add_child(q1)
+                return self._trace_path_from_start(child)
 
         print("Failed to find path from {0} to {1} after {2} iterations!".format(
             self.start.state, self.goal.state, self.max_iter))
+        return None
 
     def _get_random_sample(self):
         """
@@ -227,6 +253,17 @@ class AdaRRT():
             ending at the goal state.
         """
         # FILL in your code here
+        if not node:
+            node = self.goal
+        
+        path = []
+        cur = node
+        while cur:
+            path.append(cur.state)
+            cur = cur.parent
+        
+        path.reverse()
+        return path
 
     def _check_for_collision(self, sample):
         """
